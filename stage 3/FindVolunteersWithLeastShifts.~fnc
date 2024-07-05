@@ -1,0 +1,78 @@
+CREATE OR REPLACE FUNCTION FindVolunteersWithLeastShifts(
+    p_paramedic_id OUT Volunteer.Volunteer_ID%TYPE,
+    p_medic1_id OUT Volunteer.Volunteer_ID%TYPE,
+    p_medic2_id OUT Volunteer.Volunteer_ID%TYPE,
+    p_driver_id OUT Volunteer.Volunteer_ID%TYPE
+) RETURN NUMBER IS
+    v_ambulance_id Ambulans.Ambulance_ID%TYPE;
+BEGIN
+    -- Find the paramedic with the least number of shifts
+    SELECT Volunteer_ID
+    INTO p_paramedic_id
+    FROM (
+        SELECT s.Volunteer_ID, COUNT(*) AS shift_count
+        FROM Shift s
+        GROUP BY s.Volunteer_ID
+        ORDER BY shift_count ASC, DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    -- Find the two medics with the least number of shifts
+    SELECT Volunteer_ID
+    INTO p_medic1_id
+    FROM (
+        SELECT ms.Volunteer_ID, COUNT(*) AS shift_count
+        FROM madicinshift ms
+        GROUP BY ms.Volunteer_ID
+        ORDER BY shift_count ASC, DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    SELECT Volunteer_ID
+    INTO p_medic2_id
+    FROM (
+        SELECT ms.Volunteer_ID, COUNT(*) AS shift_count
+        FROM madicinshift ms
+        WHERE ms.Volunteer_ID <> p_medic1_id
+        GROUP BY ms.Volunteer_ID
+        ORDER BY shift_count ASC, DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    -- Find the driver with the least number of shifts
+    SELECT Volunteer_ID
+    INTO p_driver_id
+    FROM (
+        SELECT ds.Volunteer_ID, COUNT(*) AS shift_count
+        FROM driverinshift ds
+        GROUP BY ds.Volunteer_ID
+        ORDER BY shift_count ASC, DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    -- Find an available ambulance and assign it to the driver
+    SELECT Ambulance_ID
+    INTO v_ambulance_id
+    FROM (
+        SELECT a.Ambulance_ID
+        FROM ambulans a
+        WHERE a.status = 'available'
+        ORDER BY DBMS_RANDOM.VALUE
+    )
+    WHERE ROWNUM = 1;
+
+    UPDATE ambulans
+    SET status = 'assigned'
+    WHERE Ambulance_ID = v_ambulance_id;
+
+    INSERT INTO drivertoambu (Volunteer_ID, Ambulance_ID)
+    VALUES (p_driver_id, v_ambulance_id);
+commit;
+    RETURN v_ambulance_id;
+EXCEPTION
+    WHEN NO_DATA_FOUND THEN
+        RETURN -1; -- No available volunteers or ambulances found
+    WHEN OTHERS THEN
+        RETURN -2; -- Other errors
+END;
+/
